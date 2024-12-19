@@ -1,0 +1,13 @@
+torch
+torchvision
+segmentation_models_pytorch
+timm==0.9.7
+torchmetrics
+optuna
+Pillow
+matplotlib
+pandas
+numpy
+scikit-learn
+tqdm
+certifi
