@@ -175,3 +175,24 @@ def forty_five_deg_rot(image, is_mask=False, debug=False):
         plt.show()
 
     return rotations  # List of rotated images (tensors)
+
+
+def get_transforms(encoder_name, mean, std):
+    """
+    Generate image and mask transform pipelines with dynamic padding.
+
+    Args:
+        encoder_name (str): The name of the encoder to determine padding multiple.
+        mean (list): Mean values for normalization.
+        std (list): Standard deviation values for normalization.
+
+    Returns:
+        tuple: image_transform (Compose), mask_transform (PadToMultiple)
+    """
+    pad_to_multiple = PadToMultiple(encoder_name)
+    image_transform = Compose([
+        pad_to_multiple,
+        Normalize(mean=mean, std=std)
+    ])
+    mask_transform = PadToMultiple(encoder_name)
+    return image_transform, mask_transform
