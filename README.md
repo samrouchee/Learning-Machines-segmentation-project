@@ -27,7 +27,7 @@ This project implements an advanced image segmentation pipeline utilizing **Segm
 
 ## Project Structure
 
-
+````` bash
 data_augmentation/
 │
 ├── train_images/
@@ -54,7 +54,7 @@ data_augmentation/
     ├── test_001.png
     ├── test_002.png
     └── ...
-
+`````
 
 ### Description of Folders and Files
 
@@ -94,12 +94,10 @@ data_augmentation/
 
 ### Prerequisites
 
-- **Python 3.7+**
+- **Python 3.9+**
 - **pip** package manager
 
 ### Clone the Repository
-
-
 
 - git clone https://github.com/yourusername/your-repo.git
 - cd your-repo
@@ -110,3 +108,35 @@ data_augmentation/
 The main workflow is managed by `main.py`. To execute the project, navigate to the `project_root` directory and run:
 
 - python main.py
+
+
+## Configuration
+- Modifying Hyperparameter Ranges :
+To adjust the hyperparameter search space for Optuna, edit the objective function within optimization/optuna_optimization.py
+
+- Adding New Models
+To include additional segmentation architectures, update the architecture_map in models/model_definitions.p
+
+## Data Preparation
+- Mini Datasets:
+For faster experimentation, you can create mini versions of your datasets by appending _mini to folder names (e.g., train_images_mini/). Set the mini flag in main.py accordingly
+
+## Hyperparameter Optimization
+The project uses Optuna for hyperparameter optimization. By default, hyperparameter optimization is enabled (optimise = True)
+
+- Optuna will perform the specified number of trials (optuna_n_trials), each training the model for optuna_n_Epochs. The best hyperparameters are saved to saved_models/best_hyperparameters.json
+
+## Training
+Once hyperparameter optimization is complete (or skipped), the model will be trained using the best-found hyperparameters for train_n_epochs
+
+## Generating submissions
+If create_submission is set to True in main.py, the project will generate predicted masks and a submission CSV file after training
+
+## Dependencies
+All required Python packages are listed in requirements.txt
+
+## Aknowledgements
+- Segmentation Models PyTorch: https://github.com/qubvel/segmentation_models.pytorch
+- Optuna: https://optuna.org/
+- PyTorch: https://pytorch.org/
+- Google Colab: For providing a convenient environment for development and training.
