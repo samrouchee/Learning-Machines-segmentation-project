@@ -14,9 +14,14 @@ from data_augmentation.datasets import Train_Dataset
 from torch.utils.data import DataLoader
 from utils.metrics import Jaccard_index, F1_score
 
+# =========================
+# Optuna Hyperparameter Optimization
+# =========================
+
 def train_with_optuna(config: TrainingConfig, trial):
     """Training loop adapted for Optuna hyperparameter optimization."""
     # INPUTS
+    ####################################
     model = config.model
     train_dataloader = config.train_dataloader
     val_dataloader = config.val_dataloader
@@ -29,7 +34,7 @@ def train_with_optuna(config: TrainingConfig, trial):
     model_name = config.model_name
     gradient_clipping = config.gradient_clipping
     max_norm = config.max_norm
-    # OUTPUTS
+    ####################################
     use_amp = torch.cuda.is_available()  # Enable AMP only if CUDA is available
 
     scaler = GradScaler() if use_amp else None
@@ -38,11 +43,12 @@ def train_with_optuna(config: TrainingConfig, trial):
     print(f"\nStarting trial {trial.number}")
     print(f"Trial {trial.number} Hyperparameters: {trial.params}")
 
-    for epoch in tqdm(range(epochs), desc=f"Trial {trial.number + 1} Progress", leave=True, position=0):
+    for epoch in tqdm( range(epochs), desc=f"Trial {trial.number + 1} Progress",leave=True, position=0):
         # Training phase
         model.train()
         train_loss = 0.0
 
+        #for batch_idx, (images, masks) in enumerate(tqdm(train_dataloader, desc=f"Training Epoch {epoch + 1}/{epochs}", leave=False, position=1)):
         for batch_idx, (images, masks) in enumerate(tqdm(train_dataloader, desc=f"Training Epoch", leave=False, position=1)):
             images, masks = images.to(device), masks.to(device)
 
@@ -81,17 +87,12 @@ def train_with_optuna(config: TrainingConfig, trial):
         val_loss, current_f1_score, current_iou_score = evaluate(model, val_dataloader, criterion, device)
         print(f"Epoch {epoch + 1} - Validation Loss: {val_loss:.4f}, F1 Score: {current_f1_score:.4f}, IoU: {current_iou_score:.4f}")
 
+
         # Update the learning rate scheduler
         scheduler.step(current_f1_score)
 
         # Save the best model
-        if current_f1_score > best_f1_score:
-            best_f1_score = current_f1_score
-            best_iou_score = current_iou_score
-            os.makedirs(save_path, exist_ok=True)
-            best_model_path = os.path.join(save_path, model_name)
-            torch.save(model.state_dict(), best_model_path)
-            print(f"Saved new best model to {best_model_path} with F1 Score: {best_f1_score:.4f}")
+        best_f1_score = save_best_model(model, best_f1_score, current_f1_score, save_path, model_name, verbose=False)
 
         # Report intermediate objective value to Optuna
         trial.report(current_f1_score, epoch)
@@ -104,18 +105,14 @@ def train_with_optuna(config: TrainingConfig, trial):
     print(f"Trial {trial.number} completed with Best F1 Score: {best_f1_score:.4f}")
     return best_f1_score
 
-def run_optuna_optimization(n_trials=20, optuna_n_Epochs=10, train_images_dir="", train_masks_dir="", validation_images_dir="", validation_masks_dir="", device=torch.device('cpu')):
+
+def run_optuna_optimization(n_trials=20, optuna_n_Epochs=10):
     """
     Runs the Optuna hyperparameter optimization and analyzes the results.
 
     Parameters:
         n_trials (int): Number of trials for the Optuna study.
         optuna_n_Epochs (int): Number of epochs per trial.
-        train_images_dir (str): Directory containing training images.
-        train_masks_dir (str): Directory containing training masks.
-        validation_images_dir (str): Directory containing validation images.
-        validation_masks_dir (str): Directory containing validation masks.
-        device (torch.device): Device to use.
 
     Returns:
         dict: The best hyperparameters found by the study.
@@ -127,19 +124,23 @@ def run_optuna_optimization(n_trials=20, optuna_n_Epochs=10, train_images_dir=""
         learning_rate = trial.suggest_float('learning_rate', 1e-6, 1e-2, log=True)
         max_norm = trial.suggest_float('max_norm', 0.1, 10.0)
         patience = trial.suggest_int('patience', 3, 10)
-        factor = trial.suggest_float('factor', 0.1, 0.5)
+        factor = trial.suggest_float('factor', 0.1, 0.9)
         batch_size = trial.suggest_categorical('batch_size', [4, 8, 16])
         loss_name = trial.suggest_categorical(
             'loss', ['DiceLoss', 'JaccardLoss', 'TverskyLoss', 'LovaszLoss', 'FocalLoss', 'DiceBCELoss']
         )
+
+        # Architectures and encoders based on previous tests
         architecture = trial.suggest_categorical(
             'architecture', ['Unet', 'UnetPlusPlus', 'DeepLabV3Plus', 'PAN', 'FPN']
         )
+
         encoder_name = trial.suggest_categorical(
-            'encoder_name', ['resnet50', 'efficientnet-b4', 'mobilenet_v2', 'timm-res2net50_26w_4s', 'senet154']
+            'encoder_name', ['resnet50', 'resnet34','efficientnet-b4', 'mobilenet_v2', 'timm-res2net50_26w_4s', 'senet154']
         )
 
         # Prune known failing combos:
+        # DeepLabV3Plus and PAN with timm-res2net50_26w_4s have known dilation issues
         if architecture in ['PAN', 'DeepLabV3Plus'] and encoder_name == 'timm-res2net50_26w_4s':
             raise optuna.exceptions.TrialPruned(f"Combination {architecture} with {encoder_name} not supported.")
 
@@ -164,13 +165,16 @@ def run_optuna_optimization(n_trials=20, optuna_n_Epochs=10, train_images_dir=""
             criterion = combined_loss
 
         # Initialize the model based on architecture and encoder
-        model = get_smp_model(
-            architecture=architecture,
-            encoder_name=encoder_name,
-            in_channels=3,
-            classes=1,
-            encoder_weights='imagenet'
-        ).to(device)
+        if architecture == 'Unet':
+            model = smp.Unet(encoder_name=encoder_name, in_channels=3, classes=1).to(device)
+        elif architecture == 'UnetPlusPlus':
+            model = smp.UnetPlusPlus(encoder_name=encoder_name, in_channels=3, classes=1).to(device)
+        elif architecture == 'DeepLabV3Plus':
+            model = smp.DeepLabV3Plus(encoder_name=encoder_name, in_channels=3, classes=1).to(device)
+        elif architecture == 'PAN':
+            model = smp.PAN(encoder_name=encoder_name, in_channels=3, classes=1).to(device)
+        elif architecture == 'FPN':
+            model = smp.FPN(encoder_name=encoder_name, in_channels=3, classes=1).to(device)
 
         # Define optimizer
         optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
@@ -178,35 +182,19 @@ def run_optuna_optimization(n_trials=20, optuna_n_Epochs=10, train_images_dir=""
         # Define scheduler
         scheduler = ReduceLROnPlateau(optimizer, mode='max', factor=factor, patience=patience)
 
-        # Initialize datasets and dataloaders
-        train_dataset = Train_Dataset(
-            train_images_dir=train_images_dir,
-            train_masks_dir=train_masks_dir,
-            image_transform=None,  # Transforms are assumed to be handled elsewhere
-            mask_transform=None,
-            use_d4=True,
-            use_rot45=True
-        )
-        val_dataset = Train_Dataset(
-            train_images_dir=validation_images_dir,
-            train_masks_dir=validation_masks_dir,
-            image_transform=None,
-            mask_transform=None,
-            use_d4=True,
-            use_rot45=False
-        )
+        # Update DataLoaders with the suggested batch size
         train_loader = DataLoader(
             train_dataset,
             batch_size=batch_size,
             shuffle=True,
-            num_workers=2,
+            num_workers=nb_w,
             pin_memory=True
         )
         val_loader = DataLoader(
             val_dataset,
             batch_size=batch_size,
             shuffle=False,
-            num_workers=2,
+            num_workers=nb_w,
             pin_memory=True
         )
 
@@ -228,7 +216,7 @@ def run_optuna_optimization(n_trials=20, optuna_n_Epochs=10, train_images_dir=""
 
         # Train and evaluate
         try:
-            best_f1_score, _ = train(config)
+            best_f1_score = train_with_optuna(config, trial)
         except optuna.exceptions.TrialPruned:
             print(f"Trial {trial.number} was pruned.")
             raise optuna.exceptions.TrialPruned()
@@ -244,7 +232,7 @@ def run_optuna_optimization(n_trials=20, optuna_n_Epochs=10, train_images_dir=""
         def callback(study, trial):
             pbar.update(1)
 
-        study.optimize(objective, n_trials=n_trials, callbacks=[callback])
+    study.optimize(objective, n_trials=n_trials, callbacks=[callback])
 
     # Analyze results
     print("Number of finished trials: ", len(study.trials))

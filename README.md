@@ -74,6 +74,10 @@ data_augmentation/
 
 - **requirements.txt**: Lists all Python dependencies required for the project.
 
+- **collab_run.py** : Main run on collab
+
+- **Image_test_overlay.py** script to overlay prediction masks over test images
+
 ## Features
 
 - **Data Augmentation**: Implements D4 transformations and 45-degree rotations to enhance the training dataset.
@@ -108,6 +112,7 @@ data_augmentation/
 The main workflow is managed by `main.py`. To execute the project, navigate to the `project_root` directory and run:
 
 - python main.py
+- on collab run the collab_run.py
 
 
 ## Configuration
@@ -140,3 +145,14 @@ All required Python packages are listed in requirements.txt
 - Optuna: https://optuna.org/
 - PyTorch: https://pytorch.org/
 - Google Colab: For providing a convenient environment for development and training.
+
+## Results on AirCrowd for Best Model
+Model : Unetplusplus with resnet34
+Group Name : sam_22
+Best Accuracy: 0.954
+Best F1 Score: 0.915
+
+### Contributors
+Amrouche Sami
+Farhat Mayas
+Seddik Yanis
